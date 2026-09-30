@@ -1,5 +1,5 @@
 {
-  "name": "tiny-discord-notify",
+  "name": "discord-kit",
   "version": "0.1.0",
   "description": "Tiny TypeScript notifications for Discord webhooks",
   "keywords": [
@@ -14,11 +14,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/danh264/tiny-discord-notify.git"
+    "url": "git+https://github.com/danh264/discord-kit.git"
   },
-  "homepage": "https://github.com/danh264/tiny-discord-notify#readme",
+  "homepage": "https://github.com/danh264/discord-kit#readme",
   "bugs": {
-    "url": "https://github.com/danh264/tiny-discord-notify/issues"
+    "url": "https://github.com/danh264/discord-kit/issues"
   },
   "type": "module",
   "sideEffects": false,

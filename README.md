@@ -1,17 +1,17 @@
-# tiny-discord-notify
+# discord-kit
 
 Tiny, dependency-free TypeScript notifications for Discord webhooks.
 
 ## Installation
 
 ```bash
-npm install tiny-discord-notify
+npm install discord-kit
 ```
 
 ## Basic usage
 
 ```ts
-import { init } from 'tiny-discord-notify';
+import { init } from 'discord-kit';
 
 const notify = init({
   unity: process.env.DISCORD_WEBHOOK_UNITY!,
@@ -70,7 +70,7 @@ Status → short title → one/two-line description → relevant fields → one 
 ```
 
 ```ts
-import { embeds } from 'tiny-discord-notify';
+import { embeds } from 'discord-kit';
 
 await notify('unity', embeds.build({
   description: 'Production build completed successfully.',
@@ -254,7 +254,7 @@ const notify = init({ unity: process.env.DISCORD_WEBHOOK_UNITY! }, {
 Successful requests return `{ channel, success: true, status, attempts }`. Failures throw `NotifyError` with `channel`, `status`, `attempts`, and `cause`. Webhook URLs are not included in errors or library logs.
 
 ```ts
-import { NotifyError } from 'tiny-discord-notify';
+import { NotifyError } from 'discord-kit';
 
 try {
   await notify('unity', 'Build completed');
