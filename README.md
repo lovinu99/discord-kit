@@ -113,6 +113,7 @@ All builders return a `NotifyPayload` and can be passed directly to `notify()`:
 
 ```ts
 embeds.card({ status, title, description, fields, action, footer });
+embeds.table({ status, title, description, columns, action, footer });
 embeds.build({ description, project, branch, commit, duration });
 embeds.agent({ description, task, model, files, changes, tests, status });
 embeds.task({ description, project, priority, estimate, status, completed });
@@ -124,6 +125,32 @@ embeds.list({ description, items, duration, maxItems });
 ```
 
 `embeds.code(value)` wraps developer values in backticks. `embeds.progressBar(percent, width)` creates a compact bar such as `████████████████░░░░░░ 72%`.
+
+### Table-style dashboard card
+
+Discord does not expose HTML or CSS tables. The native equivalent is a responsive grid of inline embed fields. `embeds.table()` keeps short values in columns and lets long values span the full width:
+
+```ts
+await notify('lc-noti', embeds.table({
+  status: 'success',
+  title: 'Discord Embed System Ready',
+  description: 'Notification delivered successfully.',
+  author: { name: 'DISCORD-KIT • TEST' },
+  columns: [
+    { label: 'Project', value: 'discord-kit', code: true },
+    { label: 'Channel', value: 'lc-noti', code: true },
+    { label: 'Status', value: 'Delivered' },
+    {
+      label: 'Features',
+      value: 'Lifecycle hooks\\nEmbed builders\\nRetry + timeout',
+      inline: false,
+    },
+  ],
+  footer: 'Personal Dev Notifications',
+}));
+```
+
+The `inline` layout is intentionally responsive: Discord may show three columns on desktop and fewer on narrow/mobile clients. Avoid attaching a large image to table cards when column alignment matters, because Discord can change the available inline-field width. Embed fields are capped by Discord at 25 fields, with a 256-character field name and 1024-character field value; the full embed is capped at 6000 characters.
 
 ### Ten realistic examples
 

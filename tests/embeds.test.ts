@@ -8,6 +8,8 @@ function embedOf(payload: { embeds?: unknown[] }) {
     color?: number;
     fields?: Array<{ name: string; value: string; inline?: boolean }>;
     footer?: { text: string };
+    author?: { name: string; url?: string; icon_url?: string };
+    thumbnail?: { url: string };
     timestamp?: string;
     url?: string;
   };
@@ -29,6 +31,36 @@ describe('Discord embed design system', () => {
     expect(embed.description).toContain('[Open Build](https://example.com/build/1)');
     expect(embed.footer).toEqual({ text: 'Duckov • Production' });
     expect(embed.timestamp).toBeUndefined();
+  });
+
+  it('creates a responsive table layout and normalizes escaped newlines', () => {
+    const embed = embedOf(embeds.table({
+      status: 'success',
+      title: 'Discord Embed System Ready',
+      description: 'Notification delivered successfully.',
+      author: { name: 'DISCORD-KIT • TEST' },
+      columns: [
+        { label: 'Project', value: 'discord-kit', code: true },
+        { label: 'Channel', value: 'lc-noti', code: true },
+        { label: 'Status', value: 'Delivered' },
+        { label: 'Features', value: 'Lifecycle hooks\\nEmbed builders\\nRetry + timeout', inline: false },
+      ],
+      footer: 'Personal Dev Notifications',
+      timestamp: false,
+    }));
+
+    expect(embed.title).toBe('✅ Discord Embed System Ready');
+    expect(embed.author).toEqual({ name: 'DISCORD-KIT • TEST' });
+    expect(embed.fields?.slice(0, 3)).toEqual([
+      { name: 'Project', value: '`discord-kit`', inline: true },
+      { name: 'Channel', value: '`lc-noti`', inline: true },
+      { name: 'Status', value: 'Delivered', inline: true },
+    ]);
+    expect(embed.fields?.[3]).toEqual({
+      name: 'Features',
+      value: 'Lifecycle hooks\nEmbed builders\nRetry + timeout',
+      inline: false,
+    });
   });
 
   it('clamps and formats progress bars', () => {

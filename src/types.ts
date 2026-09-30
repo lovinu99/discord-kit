@@ -55,6 +55,25 @@ export interface NotifyEmbedCardOptions {
   author?: { name: string; url?: string; icon_url?: string };
 }
 
+export interface NotifyTableColumn {
+  label: string;
+  value: string | number;
+  inline?: boolean;
+  code?: boolean;
+}
+
+export interface NotifyTableEmbedOptions {
+  status: NotifyEmbedStatus;
+  title: string;
+  description?: string;
+  columns: NotifyTableColumn[];
+  action?: NotifyEmbedAction;
+  footer?: string;
+  timestamp?: string | false;
+  author?: { name: string; url?: string; icon_url?: string };
+  thumbnail?: { url: string };
+}
+
 export interface NotifyBuildEmbedOptions {
   title?: string;
   description: string;

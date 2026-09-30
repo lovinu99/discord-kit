@@ -26,4 +26,6 @@ export type {
   NotifyProgressEmbedOptions,
   NotifyResult,
   NotifyTaskEmbedOptions,
+  NotifyTableColumn,
+  NotifyTableEmbedOptions,
 } from './types.js';

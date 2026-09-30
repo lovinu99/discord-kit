@@ -11,6 +11,7 @@ import type {
   NotifyPipelineEmbedOptions,
   NotifyProgressEmbedOptions,
   NotifyTaskEmbedOptions,
+  NotifyTableEmbedOptions,
   NotifyDeploymentEmbedOptions,
 } from './types.js';
 
@@ -46,12 +47,12 @@ export function card(options: NotifyEmbedCardOptions): NotifyPayload {
     ? options.title
     : `${status.icon} ${options.title}`;
   const description = options.action
-    ? `${options.description ?? ''}${options.description ? '\n\n' : ''}[${options.action.label}](${options.action.url})`
-    : options.description;
+    ? `${normalizeText(options.description ?? '')}${options.description ? '\n\n' : ''}[${options.action.label}](${options.action.url})`
+    : normalizeText(options.description);
   const embed: NotifyEmbed = {
     title,
     description,
-    fields: options.fields?.length ? options.fields : undefined,
+    fields: options.fields?.length ? normalizeFields(options.fields) : undefined,
     color: status.color,
     url: options.url ?? options.action?.url,
     author: options.author,
@@ -61,6 +62,28 @@ export function card(options: NotifyEmbedCardOptions): NotifyPayload {
     timestamp: options.timestamp === false ? undefined : options.timestamp ?? new Date().toISOString(),
   };
   return { embeds: [embed] };
+}
+
+/**
+ * Responsive table-style embed. Discord renders inline fields in columns and
+ * chooses the final column count per client, so this remains readable on mobile.
+ */
+export function table(options: NotifyTableEmbedOptions): NotifyPayload {
+  return card({
+    status: options.status,
+    title: options.title,
+    description: options.description,
+    fields: options.columns.map((column) => ({
+      name: column.label,
+      value: column.code ? code(column.value) : String(column.value),
+      inline: column.inline ?? true,
+    })),
+    action: options.action,
+    footer: options.footer,
+    timestamp: options.timestamp,
+    author: options.author,
+    thumbnail: options.thumbnail,
+  });
 }
 
 export function progress(options: NotifyProgressEmbedOptions): NotifyPayload {
@@ -74,7 +97,7 @@ export function progress(options: NotifyProgressEmbedOptions): NotifyPayload {
   return card({
     status: 'progress',
     title: options.title,
-    description: `${options.description}\n\n${progressBar(options.percentage, options.width)}`,
+    description: `${normalizeText(options.description)}\n\n${progressBar(options.percentage, options.width)}`,
     fields,
     footer: options.footer,
     timestamp: options.timestamp,
@@ -196,7 +219,7 @@ export function pipeline(options: NotifyPipelineEmbedOptions): NotifyPayload {
   return card({
     status: options.warning ? 'warning' : options.steps.some((step) => step.status === 'error') ? 'error' : 'success',
     title: options.title ?? 'Video Pipeline',
-    description: `${options.description}\n\n${steps}`,
+    description: `${normalizeText(options.description)}\n\n${steps}`,
     fields: compactFields([
       ['Duration', options.duration, true],
       ['Output', options.output ? code(options.output) : undefined, true],
@@ -216,7 +239,7 @@ export function list(options: NotifyListEmbedOptions): NotifyPayload {
   return card({
     status: 'success',
     title: options.title ?? 'Generated Assets',
-    description: `${options.description}\n\n${visibleItems.join('\n')}`,
+    description: `${normalizeText(options.description)}\n\n${visibleItems.join('\n')}`,
     fields: compactFields([['Duration', options.duration, true]]),
     footer: options.footer,
     timestamp: options.timestamp,
@@ -229,6 +252,18 @@ function compactFields(values: Array<[string, string | undefined, boolean]>): No
     .map(([name, value, inline]) => ({ name, value: value as string, inline }));
 }
 
+function normalizeText(value: string | undefined): string | undefined {
+  return value?.replace(/\\n/g, '\n');
+}
+
+function normalizeFields(fields: NotifyEmbedField[]): NotifyEmbedField[] {
+  return fields.map((field) => ({
+    ...field,
+    name: normalizeText(field.name) ?? '',
+    value: normalizeText(field.value) ?? '',
+  }));
+}
+
 function footer(...parts: Array<string | undefined>): string | undefined {
   const value = parts.filter(Boolean).join(' • ');
   return value || undefined;
@@ -236,6 +271,7 @@ function footer(...parts: Array<string | undefined>): string | undefined {
 
 export const embeds = {
   card,
+  table,
   progress,
   build,
   agent,
