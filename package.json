@@ -1,5 +1,5 @@
 {
-  "name": "discord-kit",
+  "name": "@lovinu264/discord-kit",
   "version": "0.1.0",
   "description": "Tiny TypeScript notifications for Discord webhooks",
   "keywords": [
