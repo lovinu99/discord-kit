@@ -1,6 +1,6 @@
 # discord-kit
 
-Tiny, dependency-free TypeScript notifications for Discord webhooks.
+Tiny, dependency-free TypeScript notifications for Discord webhooks — with native media uploads, rich embeds, and Components V2 support.
 
 ## Installation
 
@@ -41,27 +41,51 @@ Advanced per-channel configuration overrides global retries:
 
 ```ts
 const notify = init({
-  unity: { webhook: 'https://discord.com/api/webhooks/id/token', enabled: true, retries: 5 },
+  unity: { webhook: 'https://discord.com/api/webhooks/id/token', enabled: true, retries: 5, owned: true },
   urgent: { webhook: 'https://discord.com/api/webhooks/id/token', enabled: false },
 });
 ```
 
+Set `owned: true` for application-owned webhooks to enable interactive buttons in Components V2 (non-owned webhooks can only use link buttons).
+
 Disabled channels return `{ channel, success: true, skipped: true }` and do not call `fetch`.
 
-## Messages and embeds
+## Media uploads (multipart/form-data)
+
+Upload local files directly — no separate upload step, no CDN needed. Files are sent as `multipart/form-data` with correct `attachments` metadata and `attachment://filename` references.
 
 ```ts
-await notify('unity', {
-  content: 'Unity build completed',
-  embeds: [{
-    title: 'Build Result',
-    description: 'Production build completed successfully.',
-    color: 0x22c55e,
-  }],
+await notify('deploy', {
+  content: 'Production deployment completed',
+  embeds: [
+    embeds.media({
+      status: 'success',
+      title: 'Production Preview',
+      description: 'Deployment screenshot attached below.',
+      image: 'attachment://screenshot.png',
+      action: { label: 'Open Deployment', url: 'https://example.com/deploy/1' },
+    }),
+  ],
+  files: [
+    { name: 'screenshot.png', path: './artifacts/screenshot.png', description: 'Deployment screenshot' },
+  ],
 });
 ```
 
-## Discord Embed Design System
+**Supported sources:**
+- `path` — filesystem path (read on send, re-read on every retry)
+- `data` — `Buffer`, `Uint8Array`, or `Blob` (in-memory)
+
+**Features:**
+- Automatic multipart construction with `payload_json` + `files[n]`
+- Correct `attachments` metadata with IDs matching file indices
+- `attachment://filename` references in embed `image` / `thumbnail` and Components V2 media
+- Client-side validation: duplicate filenames, missing files, max 10 files, invalid `attachment://` refs
+- MIME type inferred from filename or Blob; override with `contentType`
+- `description` for alt text, `spoiler` flag
+- Files are re-read on every retry attempt (streams recreated)
+
+## Rich Embed Design System
 
 The reusable `embeds` builders render notifications as compact developer dashboard cards. Every card follows the same order:
 
@@ -96,6 +120,7 @@ await notify('unity', embeds.build({
 - Use one primary action link only when it is useful.
 - Keep low-priority metadata in the footer; the timestamp is automatic by default.
 - Avoid repeating the same value in title, description, fields, and footer.
+- **Avoid duplicating the same image in both `image` and `thumbnail` — the builder deduplicates automatically.**
 
 ### Status conventions
 
@@ -112,16 +137,18 @@ await notify('unity', embeds.build({
 All builders return a `NotifyPayload` and can be passed directly to `notify()`:
 
 ```ts
-embeds.card({ status, title, description, fields, action, footer });
-embeds.table({ status, title, description, columns, action, footer });
-embeds.build({ description, project, branch, commit, duration });
-embeds.agent({ description, task, model, files, changes, tests, status });
-embeds.task({ description, project, priority, estimate, status, completed });
-embeds.error({ description, project, job, stage, error, command, action });
-embeds.deployment({ description, application, version, environment, commit, action });
-embeds.pipeline({ description, steps, duration, output, size, warning });
-embeds.progress({ title, description, percentage, current, total, eta, elapsed });
-embeds.list({ description, items, duration, maxItems });
+embeds.card({ status, title, description, fields, action, footer, image, thumbnail });
+embeds.table({ status, title, description, columns, action, footer, image, thumbnail });
+embeds.build({ description, project, environment, platform, branch, commit, version, build, duration, size, action, error, image, thumbnail });
+embeds.agent({ description, task, model, files, changes, duration, elapsed, tests, status, progress, image, thumbnail });
+embeds.task({ description, project, priority, estimate, duration, status, completed, footer });
+embeds.error({ description, project, job, stage, duration, error, stack, command, logs, action, image, thumbnail });
+embeds.deployment({ description, application, version, environment, branch, commit, build, duration, action, error, image, thumbnail });
+embeds.pipeline({ description, steps, duration, output, size, warning, image, thumbnail });
+embeds.progress({ title, description, percentage, current, total, eta, elapsed, stage, width, image, thumbnail });
+embeds.list({ description, items, duration, footer, maxItems });
+embeds.media({ status, title, description, image, thumbnail, fields, action, footer, author });        // single media card
+embeds.gallery({ status, title, description, items, footer, author });                                 // multi-image gallery
 ```
 
 `embeds.code(value)` wraps developer values in backticks. `embeds.progressBar(percent, width)` creates a compact bar such as `████████████████░░░░░░ 72%`.
@@ -142,7 +169,7 @@ await notify('lc-noti', embeds.table({
     { label: 'Status', value: 'Delivered' },
     {
       label: 'Features',
-      value: 'Lifecycle hooks\\nEmbed builders\\nRetry + timeout',
+      value: 'Lifecycle hooks\nEmbed builders\nRetry + timeout',
       inline: false,
     },
   ],
@@ -150,7 +177,44 @@ await notify('lc-noti', embeds.table({
 }));
 ```
 
-The `inline` layout is intentionally responsive: Discord may show three columns on desktop and fewer on narrow/mobile clients. Avoid attaching a large image to table cards when column alignment matters, because Discord can change the available inline-field width. Embed fields are capped by Discord at 25 fields, with a 256-character field name and 1024-character field value; the full embed is capped at 6000 characters.
+The `inline` layout is intentionally responsive: Discord may show three columns on desktop and fewer on narrow/mobile clients. Embed fields are capped by Discord at 25 fields, with a 256-character field name and 1024-character field value; the full embed is capped at 6000 characters.
+
+### New: Media-oriented builders
+
+**`embeds.media()`** — Single media card with image, caption, metadata, and action link. Use for screenshots, previews, or any single-image notification.
+
+```ts
+await notify('deploy', embeds.media({
+  status: 'success',
+  title: 'Production Preview',
+  description: 'Deployment screenshot attached below.',
+  image: 'attachment://screenshot.png',
+  fields: [{ name: 'Environment', value: 'Production', inline: true }],
+  action: { label: 'Open Deployment', url: 'https://example.com/deploy/1' },
+}), {
+  files: [{ name: 'screenshot.png', path: './artifacts/screenshot.png' }],
+});
+```
+
+**`embeds.gallery()`** — Multiple images as separate embeds with captions, links, and overflow handling. Up to 10 images (Discord limit).
+
+```ts
+await notify('assets', embeds.gallery({
+  status: 'info',
+  title: 'Episode Stills',
+  description: 'Frames from the final render.',
+  items: [
+    { url: 'attachment://frame-1.png', description: 'Opening shot', link: 'https://example.com/1' },
+    { url: 'attachment://frame-2.png', description: 'Final shot' },
+  ],
+  footer: 'Video Pipeline',
+}), {
+  files: [
+    { name: 'frame-1.png', path: './artifacts/frame-1.png' },
+    { name: 'frame-2.png', path: './artifacts/frame-2.png' },
+  ],
+});
+```
 
 ### Ten realistic examples
 
@@ -178,7 +242,7 @@ await notify('ai', embeds.agent({
   changes: '+843 / -127', duration: '8m 32s', tests: 'Passed',
 }));
 
-// 4. AI agent working
+// 4. AI agent working (progress)
 await notify('ai', embeds.agent({
   description: 'Implementing inventory system...',
   task: 'Inventory system', files: '8 modified', elapsed: '4m 12s',
@@ -198,11 +262,12 @@ await notify('video', embeds.progress({
   eta: '2m 14s', elapsed: '6m 32s',
 }));
 
-// 7. Pipeline error
+// 7. Pipeline error with stack trace
 await notify('urgent', embeds.error({
   description: 'Video rendering failed.', project: 'VideoPipeline',
   job: 'episode-12', stage: 'Rendering', duration: '8m 41s',
   error: 'FFmpeg exited with code 1', command: 'ffmpeg -i input.mp4 ...',
+  stack: 'Error: FFmpeg failed\n    at render (pipeline.ts:42:7)',
   action: { label: 'View Logs', url: 'https://example.com/logs/episode-12' },
 }));
 
@@ -241,6 +306,91 @@ await notify('assets', embeds.list({
 
 Builders use inline fields only for short values such as project, branch, duration, and status. Error messages, commands, warnings, and other long values are full width. Lists are capped with `maxItems` and summarize the remainder instead of creating a tall notification.
 
+### Client-side embed validation
+
+Payloads are validated before sending — clear `TypeError` instead of HTTP 400:
+- Content ≤ 2000 chars
+- ≤ 10 embeds per message
+- ≤ 25 fields per embed
+- ≤ 6000 combined embed characters
+- Title ≤ 256, Description ≤ 2048, Field name ≤ 256, Field value ≤ 1024, Footer ≤ 2048, Author name ≤ 256
+- `attachment://` references must match an uploaded filename
+
+## Components V2 (Dashboard & Gallery layouts)
+
+Components V2 provides a modern, flexible layout system: Containers, Sections, Text Displays, Media Galleries, Separators, Files, and Link Buttons. Use it for dashboards, image galleries, and complex layouts that rich embeds can't express.
+
+```ts
+import { componentsV2 } from '@lovinu264/discord-kit';
+
+await notify('dashboard', componentsV2.dashboard({
+  title: 'Deployment Dashboard',
+  description: 'Production deployment overview',
+  accentColor: 0x8b5cf6,
+  sections: [
+    {
+      title: 'Status',
+      description: 'All systems operational',
+      accessory: { type: 'button', label: 'View Details', url: 'https://example.com/deploy/1' },
+    },
+    {
+      title: 'Metrics',
+      fields: [
+        { name: 'Latency', value: '42ms', inline: true },
+        { name: 'Throughput', value: '1.2k req/s', inline: true },
+      ],
+    },
+  ],
+  footer: 'Deploy Bot',
+}), {
+  files: [
+    { name: 'preview.png', path: './artifacts/preview.png' },
+  ],
+});
+```
+
+**Rich Embeds vs Components V2:**
+
+| Feature | Rich Embeds | Components V2 |
+| --- | --- | --- |
+| Layout flexibility | Fixed embed structure | Composable Container/Section/Text/Media/File |
+| Media gallery | Single image per embed | Up to 10 images in one Media Gallery |
+| Text formatting | Markdown in description/fields | Text Display (full Markdown) |
+| Links | Action URL + field links | Link Buttons (style 5) |
+| Separators | ❌ | ✅ Separator component |
+| File display | Attachment list only | File component (inline) |
+| Interactive buttons | Non-owned webhooks: ❌ | Non-owned webhooks: link buttons only |
+| Owner webhook required | No | For interactive buttons (style 1-4, 6) |
+
+**Components V2 builders:**
+```ts
+componentsV2.dashboard({ title, description, accentColor, sections, footer });
+componentsV2.gallery({ title, description, accentColor, items, footer });
+componentsV2.message({ title, description, accentColor, content, footer });
+// Low-level: container, section, textDisplay, thumbnail, mediaGallery, galleryItem, file, separator, actionRow, linkButton
+```
+
+**Low-level components** (for custom layouts):
+```ts
+componentsV2.container(children, accentColor?)
+componentsV2.section([textDisplay('## Title'), textDisplay('Content')], accessory)
+componentsV2.textDisplay('# Header\n**Bold** and *italic*')
+componentsV2.thumbnail('attachment://thumb.png', 'Description')
+componentsV2.mediaGallery([{ media: { url: 'attachment://img.png' }, description: 'Caption' }])
+componentsV2.galleryItem('attachment://img.png', 'Caption')
+componentsV2.file('attachment://doc.pdf')
+componentsV2.separator(true, 2) // divider, large spacing
+componentsV2.actionRow(linkButton('Open', 'https://example.com'))
+componentsV2.linkButton('Label', 'https://example.com')
+```
+
+**Important:**
+- Components V2 requires the `IS_COMPONENTS_V2` flag (set automatically by builders)
+- Must use `with_components=true` query param (added automatically)
+- Rich embeds (`embeds`), `content`, and `poll` cannot be mixed with Components V2
+- Non-owned webhooks: interactive buttons (style 1-4, 6) are rejected client-side; link buttons (style 5) work
+- Attachments are exposed through Media Gallery, File, or Thumbnail components — they don't appear automatically
+
 ## Convenience helpers
 
 ```ts
@@ -256,11 +406,11 @@ Hooks are awaited and never receive the webhook URL:
 
 ```ts
 const notify = init({ unity: process.env.DISCORD_WEBHOOK_UNITY! }, {
-  beforeSend: ({ channel, attempt, payload }) => {
-    console.debug('sending', channel, attempt, payload);
+  beforeSend: ({ channel, attempt, payload, files }) => {
+    console.debug('sending', channel, attempt, payload, files);
   },
-  afterSend: ({ channel, attempt, success, status, error }) => {
-    console.debug('attempt finished', channel, attempt, success, status, error);
+  afterSend: ({ channel, attempt, success, status, error, files }) => {
+    console.debug('attempt finished', channel, attempt, success, status, error, files);
   },
   onComplete: (result) => {
     console.debug('notification complete', result);
@@ -272,7 +422,7 @@ const notify = init({ unity: process.env.DISCORD_WEBHOOK_UNITY! }, {
 ```
 
 - `beforeSend` runs before each request attempt.
-- `afterSend` runs after each attempt, including failed attempts.
+- `afterSend` runs after each attempt, including failed attempts. `files` contains resolved file metadata.
 - `onComplete` runs once after a successful or skipped notification.
 - `onError` runs once after the operation fails permanently, including lifecycle hook failures.
 
@@ -303,7 +453,7 @@ notify.enable('unity');
 
 ## API reference
 
-Public exports are `init`, `NotifyError`, and the TypeScript types `NotifyConfig`, `NotifyOptions`, `NotifyMessage`, `NotifyResult`, lifecycle context types, and message/embed types. The package supports Node.js 18+, ESM imports, and CommonJS `require()`.
+Public exports are `init`, `NotifyError`, `embeds`, `componentsV2`, and the TypeScript types `NotifyConfig`, `NotifyOptions`, `NotifyMessage`, `NotifyResult`, lifecycle context types, message/embed types, and Components V2 types. The package supports Node.js 18+, ESM imports, and CommonJS `require()`.
 
 ## Security
 

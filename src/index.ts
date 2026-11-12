@@ -1,6 +1,7 @@
 export { init } from './init.js';
 export { NotifyError } from './error.js';
 export { embeds } from './embeds.js';
+export { componentsV2 } from './components.js';
 export type {
   NotifyAgentEmbedOptions,
   NotifyAfterSendContext,
@@ -18,6 +19,9 @@ export type {
   NotifyFunction,
   NotifyListEmbedOptions,
   NotifyLogger,
+  NotifyMedia,
+  NotifyMediaEmbedOptions,
+  NotifyMediaSource,
   NotifyMessage,
   NotifyOptions,
   NotifyPayload,
@@ -28,4 +32,22 @@ export type {
   NotifyTaskEmbedOptions,
   NotifyTableColumn,
   NotifyTableEmbedOptions,
+  ComponentsV2Payload,
+  ComponentsV2DashboardOptions,
+  ComponentsV2GalleryOptions,
+  ComponentsV2MessageOptions,
+  ComponentsV2MediaItem,
 } from './types.js';
+export type {
+  ComponentsV2Component,
+  ComponentsV2Container,
+  ComponentsV2Section,
+  ComponentsV2TextDisplay,
+  ComponentsV2Thumbnail,
+  ComponentsV2MediaGallery,
+  ComponentsV2File,
+  ComponentsV2Separator,
+  ComponentsV2ActionRow,
+  ComponentsV2Button,
+  ComponentsV2SectionAccessory,
+} from './components.js';

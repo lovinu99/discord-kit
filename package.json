@@ -1,24 +1,27 @@
 {
   "name": "@lovinu264/discord-kit",
-  "version": "0.1.0",
-  "description": "Tiny TypeScript notifications for Discord webhooks",
+  "version": "0.2.0",
+  "description": "Tiny TypeScript notifications for Discord webhooks — with native media uploads, rich embeds, and Components V2 support",
   "keywords": [
     "discord",
     "discord-webhook",
     "notifications",
     "typescript",
     "webhook",
-    "developer-tools"
+    "developer-tools",
+    "components-v2",
+    "rich-embeds",
+    "media-upload"
   ],
   "author": "danh264",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/danh264/discord-kit.git"
+    "url": "git+https://github.com/lovinu99/discord-kit.git"
   },
-  "homepage": "https://github.com/danh264/discord-kit#readme",
+  "homepage": "https://github.com/lovinu99/discord-kit#readme",
   "bugs": {
-    "url": "https://github.com/danh264/discord-kit/issues"
+    "url": "https://github.com/lovinu99/discord-kit/issues"
   },
   "type": "module",
   "sideEffects": false,

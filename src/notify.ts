@@ -1,11 +1,19 @@
 import { NotifyError } from './error.js';
+import { fileInfo, resolveFiles, type ResolvedFile } from './media.js';
+import { sendRequest } from './transport.js';
+import { validateAttachmentReferences, validateComponentsV2, validatePayload, validateWebhookComponentsV2 } from './validate.js';
 import type {
   NotifyAfterSendContext,
   NotifyBeforeSendContext,
   NotifyChannelOptions,
   NotifyConfig,
+  NotifyEmbed,
+  NotifyFile,
+  NotifyFileInfo,
   NotifyFunction,
   NotifyLogger,
+  NotifyMedia,
+  NotifyMediaSource,
   NotifyMessage,
   NotifyOptions,
   NotifyPayload,
@@ -20,12 +28,19 @@ interface NormalizedChannel {
   webhook: string;
   enabled: boolean;
   retries?: number;
+  owned?: boolean;
 }
 
 interface SendFailure {
   status?: number;
   cause: unknown;
   retryAfter?: number;
+}
+
+interface OutgoingMessage {
+  payload: NotifyPayload;
+  files: ResolvedFile[];
+  info: NotifyFileInfo[];
 }
 
 export function createNotify<const T extends NotifyConfig>(
@@ -39,6 +54,7 @@ export function createNotify<const T extends NotifyConfig>(
       webhook: normalized.webhook,
       enabled: normalized.enabled ?? true,
       retries: normalized.retries,
+      owned: normalized.owned,
     });
   }
 
@@ -77,7 +93,9 @@ export function createNotify<const T extends NotifyConfig>(
       return result;
     }
 
-    const payload = normalizeMessage(message);
+    const outgoing = await resolveMessage(message);
+    const payload = outgoing.payload;
+    validateWebhookComponentsV2(payload, channelConfig.owned ?? false);
     const maxRetries = channelConfig.retries ?? retries;
     let lastFailure: SendFailure | undefined;
 
@@ -86,6 +104,7 @@ export function createNotify<const T extends NotifyConfig>(
         channel,
         message,
         payload,
+        files: outgoing.info,
         attempt,
       };
 
@@ -100,7 +119,7 @@ export function createNotify<const T extends NotifyConfig>(
       let response: Response | undefined;
       let failure: SendFailure | undefined;
       try {
-        response = await sendRequest(channelConfig.webhook, payload, timeout);
+        response = await sendRequest(channelConfig.webhook, payload, timeout, outgoing.files);
         if (!response.ok) {
           failure = {
             status: response.status,
@@ -116,6 +135,7 @@ export function createNotify<const T extends NotifyConfig>(
         channel,
         message,
         payload,
+        files: outgoing.info,
         attempt,
         success: !failure,
         status: response?.status,
@@ -205,7 +225,35 @@ export function normalizeMessage(message: NotifyMessage): NotifyPayload {
   if (!message || typeof message !== 'object' || Array.isArray(message)) {
     throw new TypeError('Notification message must be a string or message object');
   }
-  return { ...message };
+  const { files: _files, ...payload } = message;
+  void _files;
+  if (payload.embeds) payload.embeds = payload.embeds.map(normalizeEmbedMedia);
+  return payload;
+}
+
+function normalizeEmbedMedia(embed: NotifyEmbed): NotifyEmbed {
+  return {
+    ...embed,
+    image: normalizeMediaSource(embed.image),
+    thumbnail: normalizeMediaSource(embed.thumbnail),
+  };
+}
+
+function normalizeMediaSource(value: NotifyMediaSource | undefined): NotifyMedia | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' ? { url: value } : value;
+}
+
+async function resolveMessage(message: NotifyMessage): Promise<OutgoingMessage> {
+  const files: NotifyFile[] | undefined = typeof message === 'object' && message !== null && !Array.isArray(message)
+    ? message.files
+    : undefined;
+  const payload = normalizeMessage(message);
+  const resolved = await resolveFiles(files);
+  validatePayload(payload);
+  validateComponentsV2(payload);
+  validateAttachmentReferences(payload, resolved);
+  return { payload, files: resolved, info: fileInfo(resolved) };
 }
 
 export function validateWebhook(value: string): void {
@@ -230,21 +278,6 @@ function validateNonNegativeNumber(value: number, name: string, integer: boolean
     throw new TypeError(`${name} must be a ${integer ? 'non-negative integer' : 'positive number'}`);
   }
   return value;
-}
-
-async function sendRequest(url: string, payload: NotifyPayload, timeout: number): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function isRetryable(failure: SendFailure): boolean {

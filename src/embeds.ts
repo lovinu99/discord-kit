@@ -1,18 +1,22 @@
 import type {
   NotifyAgentEmbedOptions,
   NotifyBuildEmbedOptions,
+  NotifyDeploymentEmbedOptions,
   NotifyEmbed,
   NotifyEmbedCardOptions,
   NotifyEmbedField,
   NotifyEmbedStatus,
   NotifyErrorEmbedOptions,
+  NotifyGalleryEmbedOptions,
   NotifyListEmbedOptions,
+  NotifyMedia,
+  NotifyMediaEmbedOptions,
+  NotifyMediaSource,
   NotifyPayload,
   NotifyPipelineEmbedOptions,
   NotifyProgressEmbedOptions,
   NotifyTaskEmbedOptions,
   NotifyTableEmbedOptions,
-  NotifyDeploymentEmbedOptions,
 } from './types.js';
 
 const STATUS = {
@@ -30,6 +34,30 @@ const PIPELINE_STATUS = {
   pending: '·',
 } as const;
 
+const PIPELINE_LABEL = {
+  success: 'Completed',
+  warning: 'Warning',
+  error: 'Failed',
+  pending: 'Pending',
+} as const;
+
+const AGENT_STATUS = {
+  success: 'Completed',
+  error: 'Failed',
+  warning: 'Waiting',
+  info: 'Ready',
+  progress: 'Working',
+} as const;
+
+const LIMITS = {
+  title: 256,
+  description: 2_048,
+  fieldName: 256,
+  fieldValue: 1_024,
+  footer: 2_048,
+  authorName: 256,
+} as const;
+
 export function code(value: string | number): string {
   return `\`${String(value)}\``;
 }
@@ -43,23 +71,23 @@ export function progressBar(percentage: number, width = 24): string {
 
 export function card(options: NotifyEmbedCardOptions): NotifyPayload {
   const status = STATUS[options.status];
-  const title = options.title.startsWith(status.icon)
-    ? options.title
-    : `${status.icon} ${options.title}`;
-  const description = options.action
-    ? `${normalizeText(options.description ?? '')}${options.description ? '\n\n' : ''}[${options.action.label}](${options.action.url})`
-    : normalizeText(options.description);
+  const title = clampText(
+    options.title.startsWith(status.icon) ? options.title : `${status.icon} ${options.title}`,
+    LIMITS.title,
+  ) ?? options.title;
+  const description = clampText(buildDescription(options), LIMITS.description);
+  const media = mediaPair(options.image, options.thumbnail);
   const embed: NotifyEmbed = {
     title,
     description,
     fields: options.fields?.length ? normalizeFields(options.fields) : undefined,
     color: status.color,
     url: options.url ?? options.action?.url,
-    author: options.author,
-    thumbnail: options.thumbnail,
-    image: options.image,
-    footer: options.footer ? { text: options.footer } : undefined,
-    timestamp: options.timestamp === false ? undefined : options.timestamp ?? new Date().toISOString(),
+    author: normalizeAuthor(options.author),
+    image: media.image,
+    thumbnail: media.thumbnail,
+    footer: options.footer ? { text: clampText(options.footer, LIMITS.footer) ?? '' } : undefined,
+    timestamp: normalizeTimestamp(options.timestamp),
   };
   return { embeds: [embed] };
 }
@@ -99,6 +127,8 @@ export function progress(options: NotifyProgressEmbedOptions): NotifyPayload {
     title: options.title,
     description: `${normalizeText(options.description)}\n\n${progressBar(options.percentage, options.width)}`,
     fields,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer,
     timestamp: options.timestamp,
   });
@@ -113,6 +143,7 @@ export function build(options: NotifyBuildEmbedOptions): NotifyPayload {
     ['Branch', options.branch, true],
     ['Commit', options.commit ? code(options.commit) : undefined, true],
     ['Version', options.version ? code(options.version) : undefined, true],
+    ['Build', options.build ? code(options.build) : undefined, true],
     ['Duration', options.duration, true],
     ['Size', options.size, true],
     ['Error', options.error, false],
@@ -123,6 +154,8 @@ export function build(options: NotifyBuildEmbedOptions): NotifyPayload {
     description: options.description,
     fields,
     action: options.action,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer ?? footer(options.project, options.environment),
     timestamp: options.timestamp,
   });
@@ -145,13 +178,18 @@ export function agent(options: NotifyAgentEmbedOptions): NotifyPayload {
     ['Duration', options.duration, true],
     ['Elapsed', options.elapsed, true],
     ['Tests', options.tests, true],
-    ['Status', options.status === 'progress' ? 'Working' : undefined, true],
+    ['Status', AGENT_STATUS[status], true],
   ]);
+  const description = options.progress === undefined
+    ? options.description
+    : `${normalizeText(options.description)}\n\n${progressBar(options.progress)}`;
   return card({
     status,
     title: options.title ?? defaultTitle,
-    description: options.description,
+    description,
     fields,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer ?? 'AI Agent',
     timestamp: options.timestamp,
   });
@@ -182,7 +220,9 @@ export function error(options: NotifyErrorEmbedOptions): NotifyPayload {
     ['Stage', options.stage, true],
     ['Duration', options.duration, true],
     ['Error', options.error, false],
+    ['Stack', options.stack ? codeBlock(options.stack) : undefined, false],
     ['Command', options.command ? code(options.command) : undefined, false],
+    ['Logs', options.logs ? `[Open logs](${options.logs})` : undefined, false],
   ]);
   return card({
     status: 'error',
@@ -190,60 +230,183 @@ export function error(options: NotifyErrorEmbedOptions): NotifyPayload {
     description: options.description,
     fields,
     action: options.action,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer ?? footer(options.project),
     timestamp: options.timestamp,
   });
 }
 
 export function deployment(options: NotifyDeploymentEmbedOptions): NotifyPayload {
+  const status = options.status ?? (options.error ? 'error' : 'success');
+  const defaultTitle = status === 'error'
+    ? 'Deployment Failed'
+    : status === 'success'
+      ? 'Deployment Completed'
+      : 'Deployment';
   return card({
-    status: options.error ? 'error' : 'success',
-    title: options.title ?? (options.error ? 'Deployment Failed' : 'Deployment Completed'),
+    status,
+    title: options.title ?? defaultTitle,
     description: options.description,
     fields: compactFields([
       ['Application', options.application, true],
       ['Version', options.version ? code(options.version) : undefined, true],
       ['Environment', options.environment, true],
+      ['Branch', options.branch, true],
       ['Commit', options.commit ? code(options.commit) : undefined, true],
+      ['Build', options.build ? code(options.build) : undefined, true],
       ['Duration', options.duration, true],
       ['Error', options.error, false],
     ]),
     action: options.action,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer ?? footer(options.environment, options.application),
     timestamp: options.timestamp,
   });
 }
 
 export function pipeline(options: NotifyPipelineEmbedOptions): NotifyPayload {
-  const steps = options.steps.map((step) => `${PIPELINE_STATUS[step.status]} ${step.name}`).join('\n');
-  return card({
-    status: options.warning ? 'warning' : options.steps.some((step) => step.status === 'error') ? 'error' : 'success',
-    title: options.title ?? 'Video Pipeline',
-    description: `${normalizeText(options.description)}\n\n${steps}`,
-    fields: compactFields([
+  const status = options.warning
+    ? 'warning'
+    : options.steps.some((step) => step.status === 'error')
+      ? 'error'
+      : 'success';
+  const failedSteps = options.steps
+    .filter((step) => step.status === 'error')
+    .map((step) => step.name);
+  const visibleSteps = options.steps.slice(0, 18);
+  const hiddenSteps = options.steps.length - visibleSteps.length;
+  const stepFields: NotifyEmbedField[] = visibleSteps.map((step) => ({
+    name: `${PIPELINE_STATUS[step.status]} ${step.name}`,
+    value: step.duration ?? PIPELINE_LABEL[step.status],
+    inline: true,
+  }));
+  if (hiddenSteps > 0) {
+    stepFields.push({ name: 'More stages', value: `+${hiddenSteps} more`, inline: true });
+  }
+  const fields: NotifyEmbedField[] = [
+    ...stepFields,
+    ...compactFields([
       ['Duration', options.duration, true],
       ['Output', options.output ? code(options.output) : undefined, true],
       ['Size', options.size, true],
       ['Warning', options.warning, false],
+      ['Failed stage', failedSteps.length ? failedSteps.join(', ') : undefined, false],
     ]),
+  ];
+  return card({
+    status,
+    title: options.title ?? 'Video Pipeline',
+    description: options.description,
+    fields,
+    image: options.image,
+    thumbnail: options.thumbnail,
     footer: options.footer ?? 'Video Pipeline',
     timestamp: options.timestamp,
   });
 }
 
 export function list(options: NotifyListEmbedOptions): NotifyPayload {
-  const maxItems = Math.max(1, options.maxItems ?? 8);
-  const visibleItems = options.items.slice(0, maxItems).map((item) => `✓ ${item}`);
+  const maxItems = Math.min(25, Math.max(1, options.maxItems ?? 8));
+  const visibleItems = options.items.slice(0, maxItems);
   const remaining = options.items.length - visibleItems.length;
-  if (remaining > 0) visibleItems.push(`+ ${remaining} more`);
+  const itemFields: NotifyEmbedField[] = visibleItems.map((item, index) => ({
+    name: String(index + 1).padStart(2, '0'),
+    value: `✓ ${item}`,
+    inline: true,
+  }));
+  const description = `${normalizeText(options.description)}${remaining > 0 ? `\n\n+ ${remaining} more` : ''}`;
   return card({
     status: 'success',
     title: options.title ?? 'Generated Assets',
-    description: `${normalizeText(options.description)}\n\n${visibleItems.join('\n')}`,
-    fields: compactFields([['Duration', options.duration, true]]),
+    description,
+    fields: [
+      ...itemFields,
+      ...compactFields([['Duration', options.duration, true]]),
+    ],
     footer: options.footer,
     timestamp: options.timestamp,
   });
+}
+
+export function media(options: NotifyMediaEmbedOptions): NotifyPayload {
+  return card({
+    status: options.status ?? 'info',
+    title: options.title,
+    description: options.description,
+    fields: options.fields,
+    action: options.action,
+    image: options.image,
+    thumbnail: options.thumbnail,
+    footer: options.footer,
+    timestamp: options.timestamp,
+    author: options.author,
+  });
+}
+
+export function gallery(options: NotifyGalleryEmbedOptions): NotifyPayload {
+  if (!options.items.length) throw new TypeError('Gallery requires at least one item');
+  const items = options.items.slice(0, 10);
+  const overflow = options.items.length - items.length;
+  const status = options.status ?? 'info';
+  const title = options.title ?? 'Gallery';
+
+  const embeds = items.map((item, index) => {
+    const description = [
+      index === 0 ? normalizeText(options.description) : undefined,
+      normalizeText(item.description),
+      index === 0 && overflow > 0 ? `+ ${overflow} more` : undefined,
+    ].filter(Boolean).join('\n\n');
+    return card({
+      status,
+      title: items.length === 1 ? title : `${title} · ${index + 1}/${items.length}`,
+      description,
+      image: item.url,
+      url: item.link,
+      footer: index === 0 ? options.footer : undefined,
+      timestamp: index === 0 ? options.timestamp : false,
+      author: index === 0 ? options.author : undefined,
+    }).embeds![0];
+  });
+  return { embeds };
+}
+
+function normalizeTimestamp(value: string | boolean | undefined): string | undefined {
+  if (value === false) return undefined;
+  if (value === true || value === undefined) return new Date().toISOString();
+  return value;
+}
+
+function buildDescription(options: NotifyEmbedCardOptions): string | undefined {
+  const description = normalizeText(options.description) ?? '';
+  if (!options.action) return description || undefined;
+  const action = `[${options.action.label}](${options.action.url})`;
+  return description ? `${description}\n\n${action}` : action;
+}
+
+function mediaPair(
+  image: NotifyMediaSource | undefined,
+  thumbnail: NotifyMediaSource | undefined,
+): { image?: NotifyMedia; thumbnail?: NotifyMedia } {
+  const primary = mediaSource(image);
+  const secondary = mediaSource(thumbnail);
+  if (primary && secondary && primary.url === secondary.url) {
+    return { image: primary, thumbnail: undefined };
+  }
+  return { image: primary, thumbnail: secondary };
+}
+
+function mediaSource(value: NotifyMediaSource | undefined): NotifyMedia | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' ? { url: value } : value;
+}
+
+function normalizeAuthor(
+  author: NotifyEmbedCardOptions['author'],
+): NotifyEmbedCardOptions['author'] {
+  if (!author) return undefined;
+  return { ...author, name: clampText(author.name, LIMITS.authorName) ?? '' };
 }
 
 function compactFields(values: Array<[string, string | undefined, boolean]>): NotifyEmbedField[] {
@@ -259,9 +422,19 @@ function normalizeText(value: string | undefined): string | undefined {
 function normalizeFields(fields: NotifyEmbedField[]): NotifyEmbedField[] {
   return fields.map((field) => ({
     ...field,
-    name: normalizeText(field.name) ?? '',
-    value: normalizeText(field.value) ?? '',
+    name: clampText(field.name, LIMITS.fieldName) ?? '',
+    value: clampText(field.value, LIMITS.fieldValue) ?? '',
   }));
+}
+
+function clampText(value: string | undefined, limit: number): string | undefined {
+  const normalized = normalizeText(value);
+  if (normalized === undefined || normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 1))}…`;
+}
+
+function codeBlock(value: string): string {
+  return `\`\`\`\n${clampText(value, LIMITS.fieldValue - 10) ?? ''}\n\`\`\``;
 }
 
 function footer(...parts: Array<string | undefined>): string | undefined {
@@ -280,6 +453,8 @@ export const embeds = {
   deployment,
   pipeline,
   list,
+  media,
+  gallery,
   code,
   progressBar,
 } as const;
