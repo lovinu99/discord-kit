@@ -1,6 +1,6 @@
 {
   "name": "@lovinu264/discord-kit",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Tiny TypeScript notifications for Discord webhooks — with native media uploads, rich embeds, and Components V2 support",
   "keywords": [
     "discord",
