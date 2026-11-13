@@ -306,12 +306,26 @@ export function dashboard(options: ComponentsV2DashboardOptions): ComponentsV2Pa
     if (sectionOpt.description) textParts.push(sectionOpt.description);
     if (sectionOpt.fields?.length) {
       for (const field of sectionOpt.fields) {
-        const prefix = field.inline ? '' : '';
         textParts.push(`**${field.name}**\n${field.value}`);
       }
     }
 
-    const textComponents = textParts.map((content) => textDisplay(content));
+    // Combine all parts into at most 3 text displays (Discord limit)
+    const combinedParts: string[] = [];
+    let currentPart = '';
+    for (const part of textParts) {
+      if (currentPart.length + part.length + 2 > 1000 && combinedParts.length < 3) {
+        combinedParts.push(currentPart.trim());
+        currentPart = part + '\n\n';
+      } else {
+        currentPart += part + '\n\n';
+      }
+    }
+    if (currentPart.trim() && combinedParts.length < 3) {
+      combinedParts.push(currentPart.trim());
+    }
+
+    const textComponents = combinedParts.map((content) => textDisplay(content));
     let accessory: ComponentsV2SectionAccessory | undefined;
 
     if (sectionOpt.accessory) {
@@ -334,7 +348,12 @@ export function dashboard(options: ComponentsV2DashboardOptions): ComponentsV2Pa
       }
     }
 
-    components.push(section(textComponents, accessory));
+    // Discord requires Section to have an accessory; use Text Display directly if no accessory
+    if (accessory) {
+      components.push(section(textComponents, accessory));
+    } else {
+      components.push(...textComponents);
+    }
   }
 
   if (options.footer) {
